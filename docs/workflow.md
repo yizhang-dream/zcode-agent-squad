@@ -84,12 +84,16 @@ reviewer 独立验收 ── pass / pass-with-notes ──► 主会话终审（
 - **分波保护**：单波重 agent（coder 类，带完整工具集与长上下文）约 20 个封顶，收割一波再放下一波——几十个子 agent 同时驻留可能把内存和主会话上下文顶爆；Explore 这类轻 agent 可以更密。
 - **指令短而自包含**：目标 / 文件路径 / 可检查的验收标准 / 坑位一行。指令越长，主会话 token 成本越高、越不敢多派——模板化是高并发的前提。
 
-## 4. 防套娃
+## 4. 防套娃（最多两层）
 
-- 子 agent 只许一层。
-- `coder` / `watcher` / `reviewer` / `Explore` 的工具列表没有 Agent 工具，结构性不可能嵌套。
-- `general-purpose` 是唯一带 Agent 工具的类型：派它时指令必须写明"你不得再派发任何子 agent"。
-- 注入规则里另有兜底条："你若是被派发出来的子 agent，无论什么模型都不得再派发"。
+- 深度上限两层：主会话 → 一层子 agent → 二层孙 agent，禁止第三层。
+- `coder` / `watcher` / `reviewer` / `Explore` 的工具列表没有 Agent 工具，结构性不可能嵌套，天然是叶子。
+- `general-purpose` 是唯一带 Agent 工具的类型，也是唯一的二层扇出入口，主会话派它时按任务形态二选一写入指令：
+  - 可拆出 ≥3 个独立单元 → 授权二层扇出：再派 `coder` / `Explore` / `watcher`（单波 ≤10、后台模式），收工前自己派 `reviewer` 对孙辈改动局部验收；禁止派 `general-purpose`；孙辈指令写明"你不得再派发任何 agent"。
+  - 单一单元任务 → "你不得再派发任何子 agent"。
+- "禁派 general-purpose + 孙辈不得再派发"两条共同保证链条在两层收口；即使主会话忘了写授权边界，注入兜底条也会生效。
+- 注入兜底条（用户级 AGENTS.md 注入子会话）："general-purpose 仅在主会话明确授权时可二层扇出，任何身份任何情况禁止派 general-purpose、禁止第三层"。
+- 分波保护延伸：1 个授权扇出的 general-purpose ≈ 最多 10 个孙 agent；主会话同时驻留的授权扇出 general-purpose ≤3 个，把放大量计入单波预算。
 
 ## 5. 机制实测结论（2026-09-11，ZCode 0.16.5）
 
@@ -112,4 +116,4 @@ reviewer 独立验收 ── pass / pass-with-notes ──► 主会话终审（
 install 参数 `--strong` / `--fast` 各自填你家的模型名即可。规则按模型名匹配身份（先匹配快模型——名字更具体，再匹配主力）。
 
 **Q：子 agent 会读到我项目里的 AGENTS.md 吗？**
-用户级 `~/.zcode/AGENTS.md` 会注入到（子）会话；注入块里的"你若是被派发出来的子 agent，不得再派发"正是为此兜底。
+用户级 `~/.zcode/AGENTS.md` 会注入到（子）会话；注入块里的兜底条——"general-purpose 仅在主会话明确授权时可二层扇出，任何情况禁止派 general-purpose、禁止第三层"——正是为此兜底。

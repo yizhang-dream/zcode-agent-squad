@@ -50,7 +50,7 @@ cd zcode-agent-squad
 
 - **主力模型（贵）**：只做规划、拆任务、终审、答复用户；实现/蹲守/调研整段外包。
 - **快模型（便宜量大）**：铁律是**吃满并发**——饱和拆分到接近并发上限、按**扇出铁律**批量派发（复数对象 = N 个子 agent，触发信号与操作模板见 workflow.md）、后台流水线不空等、单波重 agent 约 20 个分波防顶爆；同一文件的改动归同一个子 agent 避免写冲突。
-- **防套娃**：子 agent 只许一层。`coder`/`watcher`/`reviewer`/`Explore` 工具列表里没有 Agent，天然不会嵌套；唯一全工具的 `general-purpose`，派它时指令必须写明"不得再派发任何子 agent"。
+- **防套娃（最多两层）**：主会话 → 子 agent → 孙 agent 封顶。`coder`/`watcher`/`reviewer`/`Explore` 工具列表里没有 Agent，天然是叶子；唯一全工具的 `general-purpose` 是二层扇出入口——大任务（≥3 个独立单元）授权它再扇出 `coder`/`Explore`/`watcher`（单波 ≤10，收工前自派 reviewer 局部验收），小任务维持"不得再派发"；任何情况禁止派 `general-purpose`、禁止第三层（详见 workflow.md）。
 - **Review 门禁**：凡子 agent 改了文件，答复用户前必须过 `reviewer` 独立验收；fail 打回重做，最多 2 轮，仍 fail 升级用户。轻量豁免：一行级小改、纯格式、调研/蹲守类。
 
 深度说明见 [docs/workflow.md](docs/workflow.md)。

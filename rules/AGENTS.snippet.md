@@ -13,7 +13,8 @@
 - **后台流水线，不空等**：批量派发用后台模式（run_in_background），多个派发放在同一条消息里并发发出；发完立刻拆下一批，不干等结果；结果逐个收割验收，全部收齐再汇总。
 - **分波保护**：单波 coder 类重 agent 控制在 20 个左右，收割一波再放下一波（防内存/上下文被顶爆）；Explore 这类轻 agent 可以放更密。
 - **指令短而自包含**：目标、文件/路径、可检查的验收标准、坑位一行——指令越长越不敢多派，模板化是高并发的前提。
-- **防套娃铁律**：子 agent 只许一层。派 `general-purpose` 时必须在指令里写明"你不得再派发任何子 agent"；`coder` / `watcher` / `reviewer` / `Explore` 无 Agent 工具，天然不会嵌套。
+- **防套娃铁律（最多两层）**：主会话 → 子 agent → 孙 agent，到此为止，禁止第三层。二层扇出的唯一入口是被派发的 `general-purpose`（唯一带 Agent 工具的类型）；`coder` / `watcher` / `reviewer` / `Explore` 无 Agent 工具，天然是叶子。
+- **二层扇出授权**：派 `general-purpose` 前先估任务形态，指令里二选一——① 任务含 ≥3 个可独立执行单元：授权它再扇出 `coder` / `Explore` / `watcher`（单波 ≤10，后台模式），收工前自己派 `reviewer` 对孙辈改动做局部验收；禁止它派 `general-purpose`；给每个孙 agent 的指令写明"你不得再派发任何 agent"。② 单一单元任务：写明"你不得再派发任何子 agent"。1 个授权扇出的 general-purpose ≈ 最多 10 个孙 agent，同时驻留的授权扇出 general-purpose ≤3 个，计入分波预算。
 - 例外：一行级小改、纯问答、无文件操作 → 直接自己做，不值得派发开销。
 
 **如果是 {{STRONG_MODEL}}（主力模型）**：你是贵模型，职责是规划、审查、决策、答复用户。实现类和蹲守类重活必须整段外包，不要自己埋头干：
@@ -25,7 +26,7 @@
 - 子 agent 回来后：改文件的任务先过下方 Review 门禁，再终审（对照 verdict 抽查关键改动），合格才答复用户；不合格打回重做。
 - 例外：一行级小改、纯问答、无文件操作 → 直接自己做。
 
-**如果你是被派发出来的子 agent**：无论跑什么模型，都不得再派发任何子 agent，把派发的活干完、按约定格式汇报即可。
+**如果你是被派发出来的子 agent**：`coder` / `watcher` / `reviewer` / `Explore` 无 Agent 工具，不存在再派发；`general-purpose` 仅当主会话指令明确授权二层扇出时，才可再派 `coder` / `Explore` / `watcher` / `reviewer`（单波 ≤10，孙辈指令必须写明"你不得再派发任何 agent"），否则不得再派发任何子 agent；任何身份、任何情况下禁止派 `general-purpose`，禁止出现第三层。把派发的活干完、按约定格式汇报即可。
 
 **其他模型**：直接自己干，不派发。
 
@@ -48,6 +49,7 @@
 ### Review 门禁（两个模型通用）
 
 - 凡子 agent 改了文件：答复用户前必须派 `reviewer`（快模型，只读）独立验收，verdict 为 pass / pass-with-notes 才放行；fail 或有 blocker，把 reviewer 的问题清单转给原 agent 打回重做，改完复审。同一任务最多打回 2 轮，仍 fail 就带着问题清单升级给用户决策，不要无限循环。
+- 二层扇出产生的孙辈改动：由发起扇出的 general-purpose 先派 reviewer 局部验收，pass 才向上汇报；主会话的 reviewer 门禁照旧，侧重集成点与整体范围。
 - 派 reviewer 时附三样：原派发指令全文、执行 agent 的汇报、改动文件清单。
 - review 的起点是派发指令的**验收标准**（没有就先补齐再派），其次看 diff 范围与回归，最后复核验证命令。
 - 轻量豁免：一行级小改、纯格式调整、纯调研/蹲守类 → 主会话自己扫一眼即可，不派 reviewer。
