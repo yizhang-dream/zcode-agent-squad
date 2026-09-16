@@ -2,6 +2,7 @@
 #
 # - copies subagent definitions (coder / watcher / reviewer) into
 #   "$ZCODE_HOME\agents\"
+# - copies the time-of-day model router into "$ZCODE_HOME\scripts\"
 # - injects a managed rules block into "$ZCODE_HOME\AGENTS.md"
 #
 # Idempotent: re-running only replaces the managed block; user content
@@ -153,7 +154,25 @@ function Invoke-Install {
     Write-Host "installed: $dst"
   }
 
-  # --- 2. merge managed block into AGENTS.md -----------------------------------
+  # --- 2. time-of-day model router ---------------------------------------------
+  $switchSrc = Join-Path (Join-Path $RepoRoot 'scripts') 'model_switch.py'
+  if (-not (Test-Path -LiteralPath $switchSrc -PathType Leaf)) {
+    Die "model router script not found: $switchSrc"
+  }
+  if (-not (Test-Path -LiteralPath $SwitchDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $SwitchDir -Force | Out-Null
+  }
+  # same drift rule as the agent files: back up before overwriting a file
+  # whose content differs, so re-installing the same revision creates no .bak
+  if ((Test-Path -LiteralPath $SwitchScript -PathType Leaf) -and
+      ([System.IO.File]::ReadAllText($switchSrc) -cne [System.IO.File]::ReadAllText($SwitchScript))) {
+    Copy-Item -LiteralPath $SwitchScript -Destination ($SwitchScript + '.bak') -Force
+    Write-Host "backed up: $SwitchScript -> $SwitchScript.bak"
+  }
+  [System.IO.File]::WriteAllText($SwitchScript, [System.IO.File]::ReadAllText($switchSrc))
+  Write-Host "installed: $SwitchScript"
+
+  # --- 3. merge managed block into AGENTS.md -----------------------------------
   $existing = ''
   if (Test-Path -LiteralPath $AgentsMd -PathType Leaf) {
     $existing = [System.IO.File]::ReadAllText($AgentsMd)
@@ -164,12 +183,13 @@ function Invoke-Install {
   [System.IO.File]::WriteAllText($AgentsMd, ((Trim-Newlines $merged) + $Nl))
   Write-Host "updated: $AgentsMd"
 
-  # --- 3. next steps -------------------------------------------------------------
+  # --- 4. next steps -------------------------------------------------------------
   Write-Host ''
   Write-Host "zcode-agent-squad installed into $ZcodeHome"
   Write-Host 'next steps:'
   Write-Host ("  1. Desktop Settings -> Subagents: switch the built-in general-purpose and Explore agents to the fast model ({0}), or back up and edit {1} (builtInModelOverrides)." -f $FastModel, (Join-Path $ZcodeHome 'v2\agents-state.json'))
   Write-Host '  2. Changes take effect in new sessions.'
+  Write-Host '  3. Optional: route subagent models by time of day automatically - run scripts/register_model_switch_task.ps1 (see README).'
 }
 
 function Invoke-Uninstall {
@@ -185,7 +205,22 @@ function Invoke-Uninstall {
     }
   }
 
-  # --- 2. managed block -----------------------------------------------------------
+  # --- 2. time-of-day model router (leave *.bak alone) ---------------------------
+  if (Test-Path -LiteralPath $SwitchScript -PathType Leaf) {
+    Remove-Item -LiteralPath $SwitchScript -Force
+    Write-Host "removed: $SwitchScript"
+    $did = 1
+  }
+
+  # the generated task XML is only a hint that a scheduled task may still be
+  # registered: uninstall does not delete the task itself (deleting by name
+  # could hit an unrelated user task), it just tells the user the command
+  $switchXml = Join-Path $SwitchDir 'model_switch_task.xml'
+  if (Test-Path -LiteralPath $switchXml -PathType Leaf) {
+    Write-Host "note: $switchXml is still present - a scheduled task may still be registered; remove it manually with: schtasks /delete /tn ZCode-SubagentModelSwitch /f (replace the task name if you registered a custom one)"
+  }
+
+  # --- 3. managed block -----------------------------------------------------------
   if (Test-Path -LiteralPath $AgentsMd -PathType Leaf) {
     $existing = [System.IO.File]::ReadAllText($AgentsMd)
     $Nl = Get-Newline $existing
@@ -245,12 +280,21 @@ if ($Concurrency -notmatch '^[0-9]+$') {
   Die "-Concurrency expects a positive integer, got: '$Concurrency'"
 }
 
+# a bare model id carries no provider qualifier and resolves unreliably;
+# warn (do not fail) so existing setups keep installing. Only relevant when
+# installing - -Uninstall uses no model value.
+if (-not $Uninstall -and ($FastModel -notlike '*/*')) {
+  [Console]::Error.WriteLine("install.ps1: warning: -Fast '$FastModel' looks like a bare model id; prefer a fully qualified '<providerId>/<modelId>' reference")
+}
+
 $ZcodeHome = $env:ZCODE_HOME
 if ([string]::IsNullOrWhiteSpace($ZcodeHome)) {
   $ZcodeHome = Join-Path $HOME '.zcode'
 }
 $AgentsDir = Join-Path $ZcodeHome 'agents'
 $AgentsMd  = Join-Path $ZcodeHome 'AGENTS.md'
+$SwitchDir    = Join-Path $ZcodeHome 'scripts'
+$SwitchScript = Join-Path $SwitchDir 'model_switch.py'
 
 if ($ShowHelp) {
   Write-Usage

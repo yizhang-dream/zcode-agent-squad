@@ -1,7 +1,9 @@
 ---
 name: coder
 description: 执行型编码子代理（跑快模型）：专门承接写代码、改文件、修 bug、补测试、批量重构等实现类重活。主会话负责规划与验收，把"读文件→动手改→跑验证"整段外包给它。只读调研用 Explore，蹲守实验/终端用 watcher，交付验收用 reviewer。
-model: {{FAST_MODEL}}
+model: "{{FAST_MODEL}}"
+thoughtLevel: max
+injectAgentsMd: true
 color: green
 tools: [Read, Write, Edit, Glob, Grep, Bash, TodoWrite, BashOutput, KillShell]
 ---

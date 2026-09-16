@@ -1,7 +1,9 @@
 ---
 name: watcher
 description: 蹲守型子代理（跑快模型）：专门盯实验训练和终端——本地后台命令、远程 ssh 任务、日志文件轮询、GPU/进程健康检查。启动后周期性轮询输出，静默蹲守直到完成/报错/疑似卡死才回来汇报。写代码改文件用 coder，只读调研用 Explore。
-model: {{FAST_MODEL}}
+model: "{{FAST_MODEL}}"
+thoughtLevel: max
+injectAgentsMd: true
 color: cyan
 tools: [Bash, Read, Grep, Glob, BashOutput, KillShell, TodoWrite]
 maxTurns: 200

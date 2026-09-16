@@ -3,14 +3,17 @@
 #   1) agents/*.md frontmatter 必填字段（name / description）
 #   2) rules/*.md 中 snippet BEGIN/END 标记成对
 #   3) scripts/install.sh 语法检查（bash -n）
+#   4) scripts/model_switch.py 编译检查（python -m py_compile；python 不在 PATH 则 SKIP）
 # 任一项失败退出码非 0。用法：bash scripts/check.sh（或仓库内 ./scripts/check.sh）
 set -u
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 errors=0
+skips=0
 
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; errors=$((errors + 1)); }
+skip() { echo "SKIP: $1"; skips=$((skips + 1)); }
 
 # ---------- 1) agents/*.md frontmatter 必填字段 ----------
 required_fields=(name description)
@@ -78,10 +81,31 @@ else
   fi
 fi
 
+# ---------- 4) scripts/model_switch.py 编译检查 ----------
+switch_py="$repo_root/scripts/model_switch.py"
+if [ ! -f "$switch_py" ]; then
+  fail "scripts/model_switch.py: 文件不存在"
+elif ! command -v python >/dev/null 2>&1; then
+  skip "scripts/model_switch.py: python 不在 PATH，跳过编译检查"
+else
+  # py_compile 默认把字节码写在源码旁的 __pycache__；用 PYTHONPYCACHEPREFIX
+  # （Python 3.8+）重定向到临时目录，避免自检往仓库里丢文件
+  pycache_prefix="${TEMP:-${TMPDIR:-/tmp}}/zcode-agent-squad-pycache"
+  if err="$(PYTHONPYCACHEPREFIX="$pycache_prefix" python -m py_compile "$switch_py" 2>&1)"; then
+    pass "scripts/model_switch.py: python -m py_compile 编译检查通过"
+  else
+    fail "scripts/model_switch.py: python -m py_compile 编译失败：$err"
+  fi
+fi
+
 # ---------- 汇总 ----------
 echo "----------------------------------------"
 if [ "$errors" -eq 0 ]; then
-  echo "check.sh: 全部通过"
+  if [ "$skips" -gt 0 ]; then
+    echo "check.sh: 全部通过（$skips 项跳过）"
+  else
+    echo "check.sh: 全部通过"
+  fi
   exit 0
 else
   echo "check.sh: $errors 处失败"

@@ -95,14 +95,16 @@ reviewer 独立验收 ── pass / pass-with-notes ──► 主会话终审（
 - 注入兜底条（用户级 AGENTS.md 注入子会话）："general-purpose 仅在主会话明确授权时可二层扇出，任何身份任何情况禁止派 general-purpose、禁止第三层"。
 - 分波保护延伸：1 个授权扇出的 general-purpose ≈ 最多 10 个孙 agent；主会话同时驻留的授权扇出 general-purpose ≤3 个，把放大量计入单波预算。
 
-## 5. 机制实测结论（2026-09-11，ZCode 0.16.5）
+## 5. 机制实测结论（2026-09-11 起，多项实测；覆盖 ZCode CLI 0.16.5 与桌面版 3.12.1）
 
-1. **修改已有 agent 的定义文件即时生效**：改完 `coder.md` 立刻派 coder，新自审节（Review 记录汇报）已生效——定义在派发时读取。
+1. **所有 agent 定义改动都要新会话才可靠生效**（2026-09-16 桌面版 3.12.1 实测，推翻 09-11 结论）：09-11 曾测得"改完 `coder.md` 立刻派 coder，新自审节已生效"，据此以为定义在派发时读取；09-16 复核推翻——agent 定义的 `model` 与 `systemPrompt` 都在**会话启动时快照**，长会话里改定义文件（包括把 `model` 改成有效的完整限定引用）后，同会话派发仍用旧配置。第 2 条（新增类型要新会话）与此同因，依旧成立。
 2. **新增 agent 类型要新会话**：新建 `reviewer.md` 后，旧会话的 Agent 工具报 `Agent type 'reviewer' not found`；新会话可正常派发——可用类型列表在会话启动时快照。
 3. **CLI headless 的 `--max-turns` 解析有坑**：`zcode --prompt ... --max-turns 25` 报 `Unknown option '--max-turns'`（help 里却列着），去掉即可。
 4. **Git Bash bash 5.2 的 `patsub_replacement`**：`${var//pat/rep}` 替换串里的裸 `&` 会展开为匹配文本，写替换逻辑时要 `shopt -u patsub_replacement` 或避开（install.sh 已处理）。
 5. **coder 实测**：带 3 条验收标准的小任务，四节汇报齐全，自审含手算验证与 `pytest.approx` 决策说明，验收标准逐条给证据。
 6. **install 实测**：bash（Git Bash）与 PowerShell（5.1 / pwsh 7）双引擎，覆盖全新安装、幂等重装、参数变更升级、块外内容保留、卸载、.bak 备份、含 `&` 与 `/` 的模型值、CRLF 文件、路径含空格。
+7. **模型引用格式会抖动**（2026-09-16 实测）：frontmatter 的 `model:` 写裸模型 ID（如 `GLM-5.3-Flash`）时，解析结果随会话变化，解析失败会**静默回退到账号默认模型**、不报错——全量审计 312 个子 agent，其中 103 个跑成了非预期的贵模型。修复用完整限定引用 `<providerId>/<modelId>`（providerId 是 `~/.zcode/v2/config.json` provider 映射的 key）；`agents-state.json` 的覆盖值格式为 `custom:<providerId>:<modelId>`；最稳的配置方式是桌面端 Settings → Subagents 界面选择。
+8. **CLI 无头不能当模型探针**（2026-09-16 实测）：`zcode --prompt` 起的新会话，主会话模型与 `config.json` 的 `model.main` 无关（那是 legacy 导入源，不生效）。要确认某个模型引用实际生效与否，得开桌面版新会话观察。
 
 ## 6. 常见问题
 
@@ -113,7 +115,17 @@ reviewer 独立验收 ── pass / pass-with-notes ──► 主会话终审（
 不用。豁免清单：一行级小改、纯格式、调研/蹲守。判断权在主会话，规则里写死了这三类。
 
 **Q：主力模型和快模型不是同一家怎么办？**
-install 参数 `--strong` / `--fast` 各自填你家的模型名即可。规则按模型名匹配身份（先匹配快模型——名字更具体，再匹配主力）。
+install 参数 `--strong` / `--fast` 各自填你家的模型即可；其中 `--fast` 会写进子 agent frontmatter 的 `model:`，建议用完整限定引用 `<providerId>/<modelId>`（裸模型 ID 解析会随会话抖动、失败静默回退账号默认模型，见 §5 第 7 条）。规则按模型名匹配身份（先匹配快模型——名字更具体，再匹配主力）。
 
 **Q：子 agent 会读到我项目里的 AGENTS.md 吗？**
 用户级 `~/.zcode/AGENTS.md` 会注入到（子）会话；注入块里的兜底条——"general-purpose 仅在主会话明确授权时可二层扇出，任何情况禁止派 general-purpose、禁止第三层"——正是为此兜底。
+
+## 7. 模型时段路由（可选）
+
+按时间段给全部子 agent 换模型——白天用免费无限额度的 API，夜间切到套餐免费时段的模型，或反过来。环境变量表、脚本用法与计划任务 / cron 命令见 [README](../README.md) 的「进阶：子 agent 模型按时段路由」；这里只讲机制与坑位。
+
+**覆盖哪些位置**：`scripts/model_switch.py` 一次改写三处——`agents/{coder,reviewer,watcher}.md` frontmatter 的 `model:` 行，以及 `~/.zcode/v2/agents-state.json` 的 `builtInModelOverrides` / `builtInModelSelectionOverrides` / `pluginAgentModelSelectionOverrides` 三段。三段都要写：只改 frontmatter 会漏掉从 agents-state 取模型的内置与插件 agent，只改 agents-state 又会漏掉仓库模板定义的这三个。
+
+**快照时机**：`model` 是 agent 定义的一部分，在会话启动时快照（§5 第 1 条），所以**切换只对新会话生效**——切换点之前开着的会话仍跑旧模型。定时任务把触发点设在换班时刻，正在跑的长会话要手动重开才会换。
+
+**坑位**：Windows 计划任务走 `Register-ScheduledTask` 或 `LogonTrigger` 会报 0x80070005，所以注册脚本改用 XML + `schtasks /create /xml`；`StartWhenAvailable` 让睡眠错过的触发点开机补跑，而脚本按真实时间判断 day/night，补跑结果天然正确。脚本本身幂等、原子写，重复执行安全，日志在 `$ZCODE_HOME/logs/model-switch.log`。

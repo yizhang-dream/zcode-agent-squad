@@ -4,6 +4,7 @@
 #
 # - copies subagent definitions (coder / watcher / reviewer) into
 #   "$ZCODE_HOME/agents/"
+# - copies the time-of-day model router into "$ZCODE_HOME/scripts/"
 # - injects a managed rules block into "$ZCODE_HOME/AGENTS.md"
 #
 # Idempotent: re-running only replaces the managed block; user content
@@ -101,6 +102,14 @@ case "$CONCURRENCY" in
   ''|*[!0-9]*) die "--concurrency expects a positive integer, got: '$CONCURRENCY'" ;;
 esac
 
+# a bare model id carries no provider qualifier and resolves unreliably;
+# warn (do not fail) so existing setups keep installing. Only relevant when
+# installing - --uninstall uses no model value.
+case "$FAST_MODEL" in
+  */*) ;;
+  *) [ "$UNINSTALL" -eq 1 ] || echo "install.sh: warning: --fast '$FAST_MODEL' looks like a bare model id; prefer a fully qualified '<providerId>/<modelId>' reference" >&2 ;;
+esac
+
 ZCODE_HOME=${ZCODE_HOME:-"$HOME/.zcode"}
 AGENTS_DIR="$ZCODE_HOME/agents"
 AGENTS_MD="$ZCODE_HOME/AGENTS.md"
@@ -193,7 +202,21 @@ do_install() {
     echo "installed: $dst"
   done
 
-  # --- 2. merge managed block into AGENTS.md ---------------------------------
+  # --- 2. time-of-day model router --------------------------------------------
+  switch_src="$REPO_ROOT/scripts/model_switch.py"
+  switch_dst="$ZCODE_HOME/scripts/model_switch.py"
+  [ -f "$switch_src" ] || die "model router script not found: $switch_src"
+  mkdir -p "$ZCODE_HOME/scripts"
+  # same drift rule as the agent files: back up before overwriting a file
+  # whose content differs, so re-installing the same revision creates no .bak
+  if [ -f "$switch_dst" ] && ! [ "$(cat "$switch_src")" = "$(cat "$switch_dst")" ]; then
+    cp -f "$switch_dst" "$switch_dst.bak"
+    echo "backed up: $switch_dst -> $switch_dst.bak"
+  fi
+  cp -f "$switch_src" "$switch_dst"
+  echo "installed: $switch_dst"
+
+  # --- 3. merge managed block into AGENTS.md ---------------------------------
   block=$(render_block)
 
   if [ -f "$AGENTS_MD" ]; then
@@ -240,12 +263,13 @@ do_install() {
   fi
   echo "updated: $AGENTS_MD"
 
-  # --- 3. next steps ----------------------------------------------------------
+  # --- 4. next steps ----------------------------------------------------------
   echo
   echo "zcode-agent-squad installed into $ZCODE_HOME"
   echo "next steps:"
   echo "  1. Desktop Settings -> Subagents: switch the built-in general-purpose and Explore agents to the fast model ($FAST_MODEL), or back up and edit $ZCODE_HOME/v2/agents-state.json (builtInModelOverrides)."
   echo "  2. Changes take effect in new sessions."
+  echo "  3. Optional: route subagent models by time of day automatically - on Windows run scripts/register_model_switch_task.ps1 (see README)."
 }
 
 do_uninstall() {
@@ -261,7 +285,23 @@ do_uninstall() {
     fi
   done
 
-  # --- 2. managed block --------------------------------------------------------
+  # --- 2. time-of-day model router (leave *.bak alone) -------------------------
+  switch_dst="$ZCODE_HOME/scripts/model_switch.py"
+  if [ -f "$switch_dst" ]; then
+    rm -f "$switch_dst"
+    echo "removed: $switch_dst"
+    did_something=1
+  fi
+
+  # the generated task XML is only a hint that a scheduled task may still be
+  # registered: uninstall does not delete the task itself (deleting by name
+  # could hit an unrelated user task), it just tells the user the command
+  switch_xml="$ZCODE_HOME/scripts/model_switch_task.xml"
+  if [ -f "$switch_xml" ]; then
+    echo "note: $switch_xml is still present - a scheduled task may still be registered; remove it manually with: schtasks /delete /tn ZCode-SubagentModelSwitch /f (replace the task name if you registered a custom one)"
+  fi
+
+  # --- 3. managed block --------------------------------------------------------
   if [ -f "$AGENTS_MD" ]; then
     existing=$(cat "$AGENTS_MD")
     if contains "$existing" "$BEGIN_MARK"; then
