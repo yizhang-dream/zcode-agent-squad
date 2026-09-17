@@ -2,7 +2,7 @@
 
 一套 ZCode 用户级工作流配置：主会话当架构师，一群快模型子 agent 并行干活，独立 reviewer 把关质量——**没有过 review 的东西不端给用户**。
 
-为"单线慢、并发高"的快模型设计（如 GLM-5.3-Flash）：既然一个子 agent 跑不快，就把并发吃满——饱和拆分 + 扇出派发 + 后台流水线，用并行换吞吐。
+为一群快模型子 agent 设计（如 GLM-5.3-Flash）：既然单个子 agent 跑不快，就用并发换吞吐——**不管主会话跑什么模型**，派发规则一律拉满并发（2026-09-17 起统一）：饱和拆分 + 扇出派发 + 后台流水线。
 
 ## 三个角色 + 一个门禁
 
@@ -34,8 +34,8 @@ cd zcode-agent-squad
 ./scripts/install.sh        # Git Bash / Linux / macOS
 # 或：pwsh -File scripts/install.ps1    # Windows PowerShell 5.1+ / pwsh 7
 
-# 自定义模型与并发（默认 GLM-5.3 / GLM-5.3-Flash / 50）：
-./scripts/install.sh --strong GLM-5.3 --fast GLM-5.3-Flash --concurrency 50
+# 自定义子 agent 模型与并发（默认 GLM-5.3-Flash / 50）：
+./scripts/install.sh --fast GLM-5.3-Flash --concurrency 50
 ```
 
 **模型引用写完整限定格式**：`--fast` 的值会写进子 agent frontmatter 的 `model:`，建议直接传 `<providerId>/<modelId>`（providerId 是 `~/.zcode/v2/config.json` 里 provider 映射的 key）——裸模型 ID（如 `GLM-5.3-Flash`）的解析会随会话抖动，失败时**静默回退到账号默认模型**（实测全量审计 312 个子 agent，103 个跑成了非预期的贵模型，详见 [docs/workflow.md](docs/workflow.md) 的机制实测结论）。最稳的配置途径仍是桌面端 Settings → Subagents 界面选择。
@@ -51,8 +51,8 @@ cd zcode-agent-squad
 
 ## 注入的规则做了什么
 
-- **主力模型（贵）**：只做规划、拆任务、终审、答复用户；实现/蹲守/调研整段外包。
-- **快模型（便宜量大）**：铁律是**吃满并发**——饱和拆分到接近并发上限、按**扇出铁律**批量派发（复数对象 = N 个子 agent，触发信号与操作模板见 workflow.md）、后台流水线不空等、单波重 agent 约 20 个分波防顶爆；同一文件的改动归同一个子 agent 避免写冲突。
+- **主会话（不分模型）**：只做规划、拆任务、终审、答复用户；实现/蹲守/调研整段外包。
+- **派发力度**：一律**拉满并发**——饱和拆分到接近并发上限、按**扇出铁律**批量派发（复数对象 = N 个子 agent，触发信号与操作模板见 workflow.md）、后台流水线不空等、单波重 agent 约 20 个分波防顶爆；同一文件的改动归同一个子 agent 避免写冲突。
 - **防套娃（最多两层）**：主会话 → 子 agent → 孙 agent 封顶。`coder`/`watcher`/`reviewer`/`Explore` 工具列表里没有 Agent，天然是叶子；唯一全工具的 `general-purpose` 是二层扇出入口——大任务（≥3 个独立单元）授权它再扇出 `coder`/`Explore`/`watcher`（单波 ≤10，收工前自派 reviewer 局部验收），小任务维持"不得再派发"；任何情况禁止派 `general-purpose`、禁止第三层（详见 workflow.md）。
 - **Review 门禁**：凡子 agent 改了文件，答复用户前必须过 `reviewer` 独立验收；fail 打回重做，最多 2 轮，仍 fail 升级用户。轻量豁免：一行级小改、纯格式、调研/蹲守类。
 
@@ -68,7 +68,7 @@ cd zcode-agent-squad
 ## 自定义
 
 - **机器坑位**：往 `agents/coder.md` 的"工作方式"里加你本机的事项（示例：`Windows + Git Bash 的 python 可能被 Anaconda shim 劫持，报错先怀疑环境`），重新 install 或直接改 `~/.zcode/agents/coder.md`（注意后者会在升级时被仓库版覆盖）。
-- **并发数与模型名**：都是 install 参数，AGENTS.md 标记块内会相应渲染。
+- **并发数与模型名**：并发数是 install 参数，渲染进 AGENTS.md 标记块；模型名经 `--fast` 写入 `agents/*.md` frontmatter 的 `model:`（不进标记块）。
 - **豁免粒度**：觉得 review 门禁太重，改 `rules/AGENTS.snippet.md` 里的豁免清单后重跑 install。
 
 ## 进阶：子 agent 模型按时段路由
@@ -128,6 +128,7 @@ pwsh -File scripts/register_model_switch_task.ps1   # Windows：注册计划任�
 
 ## 更新记录
 
+- **v0.3.0**（2026-09-17）：派发规则统一为**不分主模型，一律拉满并发**——AGENTS 片段原「快模型 / 主力模型 / 其他模型」三档合一为「并发派发与 Review 门禁」，饱和拆分 + 扇出铁律 + 分波保护 + 两层扇出授权对所有主会话生效；`{{STRONG_MODEL}}` 占位符移除、install `--strong` 弃用（仅为向后兼容保留）；README / workflow 口径同步。
 - **v0.2.0**（2026-09-16）：新增子 agent 模型时段路由（`model_switch.py` + Windows 计划任务注册脚本）；修正"修改 agent 定义即时生效"的旧结论，补模型引用格式与 CLI 无头探针的实测坑。
 - **v0.1.0**（2026-09-11）：初版——coder / watcher / reviewer 三角色、Review 门禁、扇出铁律、两层防套娃、双平台安装器。
 

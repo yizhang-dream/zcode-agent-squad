@@ -48,7 +48,7 @@ Usage:
   install.sh [options]
 
 Options:
-  --strong <model>     Strong model name (default: GLM-5.3)
+  --strong <model>     Deprecated: ignored - rules no longer branch on the main model (accepted for backward compatibility)
   --fast <model>       Fast model name (default: GLM-5.3-Flash)
   --concurrency <n>    Max concurrent subagents (default: 50)
   --uninstall          Remove installed agents and the managed rules block

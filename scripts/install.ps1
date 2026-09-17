@@ -37,7 +37,7 @@ Usage:
   install.ps1 [options]
 
 Options:
-  -Strong <model> | --strong <model>      Strong model name (default: GLM-5.3)
+  -Strong <model> | --strong <model>      Deprecated: ignored - rules no longer branch on the main model (accepted for backward compatibility)
   -Fast <model> | --fast <model>          Fast model name (default: GLM-5.3-Flash)
   -Concurrency <n> | --concurrency <n>    Max concurrent subagents (default: 50)
   -Uninstall | --uninstall                Remove agents and the managed rules block

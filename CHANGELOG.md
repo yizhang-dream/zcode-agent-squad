@@ -2,6 +2,19 @@
 
 本文件记录 zcode-agent-squad 的显著变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-09-17
+
+### 变更
+
+- 派发规则统一为**不分主模型，一律拉满并发**（2026-09-17 起）：`rules/AGENTS.snippet.md` 原「快模型 / 主力模型 / 其他模型」三档合一为「并发派发与 Review 门禁（zcode-agent-squad）」——主会话只做拆任务、写派发指令、验收结果、汇总答复；饱和拆分 + 扇出铁律 + 后台流水线 + 分波保护 + 两层扇出授权对所有主会话生效，派发对象清单顺带补齐各角色职责边界（coder / watcher / reviewer / Explore / general-purpose）。
+- 同文件的 `## 扇出铁律（两个模型通用，最常见浪费源）`、`### Review 门禁（两个模型通用）` 标题去掉「两个模型通用」后缀，正文不动。
+- 文档口径同步：`docs/workflow.md` 并行策略一节改为「不分主模型，拉满并发」，FAQ 由「主力模型和快模型不是同一家怎么办」改为「`--strong` 参数还需要吗」；`README.md` 简介与「注入的规则做了什么」改为「主会话（不分模型）」+「派发力度：一律拉满并发」。
+- `scripts/install.sh` / `scripts/install.ps1`：`--help` 中 `--strong` 标注为 deprecated（规则不再按主模型分支，取值被忽略），参数解析与替换逻辑保留以向后兼容。
+
+### 移除
+
+- 规则片段不再按模型名判断身份：`{{STRONG_MODEL}}` 占位符从 `rules/AGENTS.snippet.md` 移除（install 脚本的 Replace 逻辑保留为 no-op，无害）；`{{FAST_MODEL}}` 仍用于子 agent frontmatter 的 `model:`。
+
 ## [0.2.0] - 2026-09-16
 
 ### 新增
